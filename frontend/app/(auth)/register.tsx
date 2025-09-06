@@ -42,7 +42,13 @@ export default function RegisterScreen() {
     setLoading(true);
     try {
       const redirectUrl = Linking.createURL('/');
-      const { createdSessionId, setActive: setActiveFromOAuth } = await startOAuthFlow({ redirectUrl });
+      const { createdSessionId, setActive: setActiveFromOAuth, authSessionResult } =
+        await startOAuthFlow({ redirectUrl });
+
+      if (authSessionResult?.type && authSessionResult.type !== 'success') {
+        return;
+      }
+
       if (createdSessionId) {
         await setActiveFromOAuth({ session: createdSessionId });
         router.replace('/(tabs)');

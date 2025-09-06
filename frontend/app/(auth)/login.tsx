@@ -40,7 +40,14 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       const redirectUrl = Linking.createURL('/');
-      const { createdSessionId, setActive: setActiveFromOAuth } = await startOAuthFlow({ redirectUrl });
+      const { createdSessionId, setActive: setActiveFromOAuth, authSessionResult } =
+        await startOAuthFlow({ redirectUrl });
+
+      // User cancelled or the flow didn’t complete.
+      if (authSessionResult?.type && authSessionResult.type !== 'success') {
+        return;
+      }
+
       if (createdSessionId) {
         await setActiveFromOAuth({ session: createdSessionId });
         router.replace('/(tabs)');
