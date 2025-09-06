@@ -1,6 +1,8 @@
 import { google } from 'googleapis';
 import type { StorageProvider, StorageOptions } from './index';
 import type { Summary, StorageLocation } from '../shared/types';
+import { getToolsForAgent, isComposioEnabled } from '../integrations/composio';
+import { isSupabaseEnabled, upsertStorageLocationSB } from '../database/supabase';
 
 /**
  * Google Docs Storage Provider
@@ -43,57 +45,59 @@ export class GoogleDocsStorage implements StorageProvider {
     }
 
     try {
+      const useComposio = isComposioEnabled();
       const title = options?.title || `Summary - ${summary.summary.substring(0, 50)}...`;
-      
-      // Create the document
-      const createResponse = await this.docs.documents.create({
-        requestBody: {
-          title: title
-        }
-      });
 
-      const documentId = createResponse.data.documentId;
-      
-      // Format and insert content
-      const content = this.formatSummaryContent(summary);
-      
-      await this.docs.documents.batchUpdate({
-        documentId: documentId,
-        requestBody: {
-          requests: content
-        }
-      });
-
-      // Set permissions if specified
-      if (options?.permissions) {
-        for (const permission of options.permissions) {
-          await this.drive.permissions.create({
-            fileId: documentId,
-            requestBody: {
-              role: permission.role,
-              type: permission.type,
-              emailAddress: permission.emailAddress
-            }
-          });
+      if (useComposio) {
+        try {
+          const tools = await getToolsForAgent(summary.userId as unknown as string, 'interaction-agent');
+          const createTool: any = tools.find((t: any) => typeof t?.name === 'string' && /google[_\- ]?docs?/i.test(t.name) && /create|document/i.test(t.name));
+          if (createTool && typeof createTool.execute === 'function') {
+            const res: any = await createTool.execute({ title, content: this.plainText(summary) });
+            const storageLocation: StorageLocation = {
+              id: `gdocs_${res?.id || generateId()}_${Date.now()}`,
+              summaryId: summary.id,
+              provider: 'google_docs',
+              externalId: res?.id || 'unknown',
+              url: res?.url,
+              metadata: { pageTitle: title, permissions: options?.permissions || [] },
+              createdAt: new Date()
+            };
+            if (isSupabaseEnabled()) await upsertStorageLocationSB({ id: storageLocation.id, summary_id: summary.id, provider: 'google_docs', external_id: storageLocation.externalId, url: storageLocation.url || null, metadata: storageLocation.metadata, created_at: storageLocation.createdAt.toISOString() });
+            return storageLocation;
+          }
+        } catch (e) {
+          console.error('[Google Docs Storage] Composio create failed, falling back:', e);
         }
       }
 
-      // Get the document URL
+      // Fallback to direct Google APIs
+      // Create the document
+      const createResponse = await this.docs.documents.create({ requestBody: { title } });
+      const documentId = createResponse.data.documentId as string;
+
+      // Format and insert content
+      const content = this.formatSummaryContent(summary);
+      await this.docs.documents.batchUpdate({ documentId, requestBody: { requests: content } });
+
+      if (options?.permissions) {
+        for (const permission of options.permissions) {
+          await this.drive.permissions.create({ fileId: documentId, requestBody: { role: permission.role, type: permission.type, emailAddress: permission.emailAddress } });
+        }
+      }
+
       const docUrl = `https://docs.google.com/document/d/${documentId}/edit`;
 
-      // Create storage location record
       const storageLocation: StorageLocation = {
         id: `gdocs_${documentId}_${Date.now()}`,
         summaryId: summary.id,
         provider: 'google_docs',
         externalId: documentId,
         url: docUrl,
-        metadata: {
-          pageTitle: title,
-          permissions: options?.permissions || []
-        },
+        metadata: { pageTitle: title, permissions: options?.permissions || [] },
         createdAt: new Date()
       };
+      if (isSupabaseEnabled()) await upsertStorageLocationSB({ id: storageLocation.id, summary_id: summary.id, provider: 'google_docs', external_id: storageLocation.externalId, url: storageLocation.url || null, metadata: storageLocation.metadata, created_at: storageLocation.createdAt.toISOString() });
 
       console.log(`[Google Docs Storage] Created document: ${docUrl}`);
       return storageLocation;
@@ -186,6 +190,7 @@ export class GoogleDocsStorage implements StorageProvider {
   }
 
   private formatSummaryContent(summary: Summary): any[] {
+
     const requests: any[] = [];
     let currentIndex = 1;
 
@@ -311,4 +316,22 @@ export class GoogleDocsStorage implements StorageProvider {
 
     return requests;
   }
+
+  private plainText(summary: Summary): string {
+    const lines: string[] = [];
+    lines.push('Summary');
+    lines.push(summary.summary);
+    if (summary.keyPoints?.length) {
+      lines.push('\nKey Points:');
+      for (const p of summary.keyPoints) lines.push(`- ${p}`);
+    }
+    lines.push(`\nSentiment: ${summary.sentiment || 'neutral'}`);
+    if (summary.topics?.length) lines.push(`Topics: ${summary.topics.join(', ')}`);
+    lines.push(`Created: ${summary.createdAt.toISOString()}`);
+    return lines.join('\n');
+  }
+}
+
+function generateId(): string {
+  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }

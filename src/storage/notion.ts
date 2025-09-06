@@ -1,6 +1,8 @@
 import { Client } from '@notionhq/client';
 import type { StorageProvider, StorageOptions } from './index';
 import type { Summary, StorageLocation } from '../shared/types';
+import { getToolsForAgent, isComposioEnabled } from '../integrations/composio';
+import { upsertStorageLocationSB, isSupabaseEnabled } from '../database/supabase';
 
 /**
  * Notion Storage Provider
@@ -38,64 +40,58 @@ export class NotionStorage implements StorageProvider {
     }
 
     try {
-      // Create the page content
-      const pageContent = this.formatSummaryContent(summary);
-      
-      // Create page in Notion database
-      const response = await this.client.pages.create({
-        parent: {
-          database_id: this.databaseId
-        },
-        properties: {
-          'Title': {
-            title: [
-              {
-                text: {
-                  content: options?.title || summary.summary.substring(0, 100) + '...'
-                }
-              }
-            ]
-          },
-          'Type': {
-            select: {
-              name: this.getContentType(summary)
-            }
-          },
-          'Sentiment': {
-            select: {
-              name: summary.sentiment || 'neutral'
-            }
-          },
-          'Topics': {
-            multi_select: (summary.topics || []).map(topic => ({ name: topic }))
-          },
-          'Confidence': {
-            number: summary.confidence || 0
-          },
-          'Created': {
-            date: {
-              start: summary.createdAt.toISOString()
-            }
+      const useComposio = isComposioEnabled();
+
+      if (useComposio) {
+        try {
+          const tools = await getToolsForAgent(summary.userId as unknown as string, 'interaction-agent');
+          const createTool: any = tools.find((t: any) => typeof t?.name === 'string' && /notion/i.test(t.name) && /create|page/i.test(t.name));
+          if (createTool && typeof createTool.execute === 'function') {
+            const title = options?.title || summary.summary.substring(0, 100) + '...';
+            const res: any = await createTool.execute({ title, content: summary.summary, properties: { sentiment: summary.sentiment, topics: summary.topics, confidence: summary.confidence } });
+            const storageLocation: StorageLocation = {
+              id: `notion_${res?.id || generateId()}_${Date.now()}`,
+              summaryId: summary.id,
+              provider: 'notion',
+              externalId: res?.id || 'unknown',
+              url: res?.url,
+              metadata: { pageTitle: title },
+              createdAt: new Date()
+            };
+            if (isSupabaseEnabled()) await upsertStorageLocationSB({ id: storageLocation.id, summary_id: summary.id, provider: 'notion', external_id: storageLocation.externalId, url: storageLocation.url || null, metadata: storageLocation.metadata, created_at: storageLocation.createdAt.toISOString() });
+            return storageLocation;
           }
+        } catch (e) {
+          console.error('[Notion Storage] Composio create failed, falling back:', e);
+        }
+      }
+
+      // Fallback: direct Notion SDK
+      const pageContent = this.formatSummaryContent(summary);
+      const response = await this.client.pages.create({
+        parent: { database_id: this.databaseId },
+        properties: {
+          'Title': { title: [{ text: { content: options?.title || summary.summary.substring(0, 100) + '...' } }] },
+          'Type': { select: { name: this.getContentType(summary) } },
+          'Sentiment': { select: { name: summary.sentiment || 'neutral' } },
+          'Topics': { multi_select: (summary.topics || []).map(topic => ({ name: topic })) },
+          'Confidence': { number: summary.confidence || 0 },
+          'Created': { date: { start: summary.createdAt.toISOString() } }
         },
         children: pageContent
       });
 
-      // Create storage location record
       const storageLocation: StorageLocation = {
         id: `notion_${response.id}_${Date.now()}`,
         summaryId: summary.id,
         provider: 'notion',
         externalId: response.id,
-        url: response.url,
-        metadata: {
-          pageTitle: options?.title || summary.summary.substring(0, 100) + '...',
-          parentId: this.databaseId
-        },
+        url: (response as any).url,
+        metadata: { pageTitle: options?.title || summary.summary.substring(0, 100) + '...', parentId: this.databaseId },
         createdAt: new Date()
       };
-
-      console.log(`[Notion Storage] Created page: ${response.url}`);
+      if (isSupabaseEnabled()) await upsertStorageLocationSB({ id: storageLocation.id, summary_id: summary.id, provider: 'notion', external_id: storageLocation.externalId, url: storageLocation.url || null, metadata: storageLocation.metadata, created_at: storageLocation.createdAt.toISOString() });
+      console.log(`[Notion Storage] Created page: ${(response as any).url}`);
       return storageLocation;
 
     } catch (error) {
@@ -287,8 +283,10 @@ export class NotionStorage implements StorageProvider {
   }
 
   private getContentType(summary: Summary): string {
-    // This would be determined from the related content item
-    // For now, return a default
     return 'Content';
   }
+}
+
+function generateId(): string {
+  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }

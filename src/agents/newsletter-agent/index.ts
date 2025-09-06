@@ -4,6 +4,8 @@ import { contentSources, contentItems, summaries } from '../../database/schema';
 import { eq, desc, and } from 'drizzle-orm';
 import { ChatOpenAI } from '@langchain/openai';
 import { PromptTemplate } from '@langchain/core/prompts';
+import { getToolsForAgent, isComposioEnabled } from '../../integrations/composio';
+import { isSupabaseEnabled, upsertContentItemSB, upsertSummarySB } from '../../database/supabase';
 
 /**
  * Newsletter Processing Agent
@@ -130,6 +132,8 @@ async function handleMonitoring(resp: AgentResponse, ctx: AgentContext, request:
     }
 
     const newsletterSource = source[0];
+
+    const composioTools = isComposioEnabled() ? await getToolsForAgent(newsletterSource.userId, 'newsletter-agent') : [];
     
     // TODO: Implement email monitoring integration
     // This would typically involve:
@@ -139,9 +143,76 @@ async function handleMonitoring(resp: AgentResponse, ctx: AgentContext, request:
     
     console.log(`[Newsletter Agent] Monitoring newsletter source: ${newsletterSource.name}`);
     
-    // For now, return a placeholder response
-    // In a real implementation, this would check for new emails
-    const newItems = 0; // Would be actual count of new newsletters processed
+    // For now, attempt to use Composio Gmail tools to gauge new messages, otherwise fallback
+    let newItems = 0;
+    try {
+      if (composioTools.length > 0) {
+        const listTool: any = composioTools.find((t: any) =>
+          typeof t?.name === 'string' && /gmail|mail/i.test(t.name) && /list|messages|threads/i.test(t.name)
+        );
+        const getTool: any = composioTools.find((t: any) =>
+          typeof t?.name === 'string' && /gmail|mail/i.test(t.name) && /get|read/i.test(t.name) && /message|thread/i.test(t.name)
+        );
+        if (listTool && typeof listTool.execute === 'function') {
+          const res: any = await listTool.execute({ q: 'newer_than:7d' });
+          const messages = Array.isArray(res?.messages) ? res.messages : (Array.isArray(res) ? res : []);
+          for (const m of messages.slice(0, 10)) {
+            const id = m.id || m.messageId || m.threadId;
+            if (!id) continue;
+            // dedupe by gmail:message:id URL
+            const existing = await db
+              .select()
+              .from(contentItems)
+              .where(and(eq(contentItems.sourceId, request.sourceId), eq(contentItems.url, `gmail:message:${id}`)))
+              .limit(1);
+            if (existing.length > 0) continue;
+            let subject = 'Newsletter';
+            let from = 'Unknown';
+            let date = new Date().toISOString();
+            let text = '';
+            if (getTool && typeof getTool.execute === 'function') {
+              try {
+                const full: any = await getTool.execute({ id });
+                subject = full?.subject || subject;
+                from = full?.from || from;
+                date = full?.date || date;
+                text = full?.text || full?.snippet || text;
+              } catch (e) {
+                // ignore
+              }
+            }
+            const contentId = `newsletter_${generateId()}_${Date.now()}`;
+            await db.insert(contentItems).values({
+              id: contentId,
+              sourceId: request.sourceId,
+              type: 'newsletter',
+              title: subject,
+              url: `gmail:message:${id}`,
+              content: text,
+              metadata: { author: from, publishedAt: date, gmailMessageId: id },
+              publishedAt: new Date(date),
+              createdAt: new Date()
+            });
+            if (isSupabaseEnabled()) {
+              await upsertContentItemSB({
+                id: contentId,
+                source_id: request.sourceId,
+                type: 'newsletter',
+                title: subject,
+                url: `gmail:message:${id}`,
+                content: text,
+                metadata: { author: from, publishedAt: date, gmailMessageId: id },
+                published_at: new Date(date).toISOString(),
+                created_at: new Date().toISOString()
+              });
+            }
+            newItems++;
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[Newsletter Agent] Composio Gmail check failed:', e);
+    }
 
     // Update source metadata
     await db
@@ -160,6 +231,7 @@ async function handleMonitoring(resp: AgentResponse, ctx: AgentContext, request:
       data: {
         sourceId: request.sourceId,
         newItems: newItems,
+        composio: { enabled: isComposioEnabled(), toolsAvailable: composioTools.length },
         message: 'Newsletter monitoring completed (email integration pending)'
       },
       timestamp: new Date().toISOString()
@@ -236,6 +308,21 @@ async function handleSummarization(resp: AgentResponse, ctx: AgentContext, reque
       createdAt: new Date()
     });
 
+    if (isSupabaseEnabled()) {
+      await upsertSummarySB({
+        id: summaryId,
+        content_item_id: request.contentItemId,
+        user_id: request.userId,
+        summary: summaryData.summary,
+        key_points: summaryData.keyPoints ?? null,
+        sentiment: summaryData.sentiment ?? null,
+        topics: summaryData.topics ?? null,
+        ai_model: 'gpt-4o-mini',
+        confidence: summaryData.confidence ?? null,
+        created_at: new Date().toISOString()
+      });
+    }
+
     return resp.json({
       success: true,
       data: {
@@ -289,6 +376,20 @@ async function handleEmailProcessing(resp: AgentResponse, ctx: AgentContext, req
       publishedAt: new Date(emailData.date),
       createdAt: new Date()
     });
+
+    if (isSupabaseEnabled()) {
+      await upsertContentItemSB({
+        id: contentItemId,
+        source_id: request.sourceId,
+        type: 'newsletter',
+        title: emailData.subject,
+        url: `gmail:message:${emailData.subject}`,
+        content: emailData.textContent,
+        metadata: { author: emailData.from, publishedAt: emailData.date, tags: emailData.tags || [] },
+        published_at: new Date(emailData.date).toISOString(),
+        created_at: new Date().toISOString()
+      });
+    }
 
     return resp.json({
       success: true,

@@ -5,6 +5,7 @@ import { eq, desc, and, like, or } from 'drizzle-orm';
 import { ChatOpenAI } from '@langchain/openai';
 import { PromptTemplate } from '@langchain/core/prompts';
 import type { Conversation, ConversationContext } from '../../shared/types';
+import { getToolsForAgent, isComposioEnabled } from '../../integrations/composio';
 
 /**
  * User Interaction Handler Agent
@@ -139,7 +140,30 @@ async function handleUserQuestion(resp: AgentResponse, ctx: AgentContext, reques
     });
 
     const aiResponse = await llm.invoke(prompt);
-    const responseText = aiResponse.content as string;
+    let responseText = aiResponse.content as string;
+
+    // Light-weight tool usage: if user asks to save/create in Notion or Google Docs, attempt via Composio
+    if (isComposioEnabled()) {
+      const toolText = request.query.toLowerCase();
+      try {
+        const tools = await getToolsForAgent(request.userId!, 'interaction-agent');
+        if (/notion/.test(toolText)) {
+          const notionCreate: any = tools.find((t: any) => typeof t?.name === 'string' && /notion/i.test(t.name) && /create|page/i.test(t.name));
+          if (notionCreate && typeof notionCreate.execute === 'function') {
+            const res: any = await notionCreate.execute({ title: `Novi Answer - ${new Date().toLocaleString()}`, content: responseText });
+            if (res?.url) responseText += `\n\nSaved to Notion: ${res.url}`;
+          }
+        } else if (/google doc|gdocs|google docs/.test(toolText)) {
+          const gdocsCreate: any = tools.find((t: any) => typeof t?.name === 'string' && /google[_\- ]?docs?/i.test(t.name) && /create|document/i.test(t.name));
+          if (gdocsCreate && typeof gdocsCreate.execute === 'function') {
+            const res: any = await gdocsCreate.execute({ title: `Novi Answer - ${new Date().toLocaleString()}`, content: responseText });
+            if (res?.url) responseText += `\n\nSaved to Google Docs: ${res.url}`;
+          }
+        }
+      } catch (e) {
+        console.error('[Interaction Agent] Composio tool call failed:', e);
+      }
+    }
 
     // Save conversation to database
     const conversationId = `conv_${generateId()}_${Date.now()}`;

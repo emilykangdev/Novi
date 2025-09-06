@@ -9,6 +9,7 @@ Novi is an AI companion that keeps you up to date on YouTube channels, RSS feeds
 - **24/7 Content Monitoring**: Automatically monitors your YouTube channels, RSS feeds, and newsletters
 - **AI-Powered Summaries**: Generates intelligent summaries with key points, topics, and sentiment analysis
 - **Flexible Storage**: Saves summaries to Notion or Google Docs with rich formatting
+- **Composio Tools**: Unified auth and tool execution for Gmail, YouTube, Notion, Google Docs
 - **Interactive Q&A**: Ask Novi questions about your content via text or speech
 - **Cross-Platform**: React Native app for iOS and Android
 - **Cloud-Native**: Powered by Agentuity for scalable agent orchestration
@@ -80,7 +81,7 @@ Perfect for hackathon demonstrations:
 - **Agents**: Agentuity + Langchain + OpenAI/Anthropic
 - **Database**: TiDB (MySQL-compatible, cloud-native)
 - **Frontend**: React Native + Expo + TypeScript
-- **Storage**: Notion API + Google Docs API
+- **Storage**: Supabase (canonical) + Notion/Google Docs via Composio
 - **Audio**: ElevenLabs text-to-speech
 - **Auth**: JWT + Google/Apple Sign-In ready
 
