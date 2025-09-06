@@ -7,6 +7,16 @@ import { useSignIn, useOAuth } from '@clerk/clerk-expo';
 import * as Linking from 'expo-linking';
 import { theme } from '../../theme/theme';
 
+/**
+ * Login screen component that authenticates users via Clerk using email/password or Google OAuth.
+ *
+ * Renders inputs for email and password, a "Sign In with Email" button, a "Continue with Google" OAuth button,
+ * and a link to the registration screen. Uses Clerk's signIn and OAuth flows; on successful authentication
+ * it activates the created session and navigates to '/(tabs)'. Displays an alert for authentication errors
+ * and manages a local loading state while requests are in progress.
+ *
+ * @returns The React element for the login screen.
+ */
 export default function LoginScreen() {
   const { signIn, setActive, isLoaded } = useSignIn();
   const { startOAuthFlow } = useOAuth({ strategy: 'oauth_google' });

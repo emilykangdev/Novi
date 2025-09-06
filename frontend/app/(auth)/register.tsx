@@ -7,6 +7,16 @@ import { useSignUp, useOAuth } from '@clerk/clerk-expo';
 import * as Linking from 'expo-linking';
 import { theme } from '../../theme/theme';
 
+/**
+ * Registration screen component that lets users sign up with email/password or Google OAuth.
+ *
+ * Renders a form (name, email, password), a "Continue with Google" button, and navigation to the login screen.
+ * - Email sign-up uses Clerk's signUp.create and, on success, activates the session and replaces the router to '/(tabs)'.
+ * - Google sign-up starts an OAuth flow (strategy 'oauth_google') with a redirect URL (built via Linking.createURL('/')), activates the returned session on success, and replaces the router to '/(tabs)'.
+ * - Errors from either flow are surfaced via Alert dialogs. Local loading state prevents duplicate submissions and disables the email sign-up button when inputs are missing.
+ *
+ * @returns A React element for the registration screen.
+ */
 export default function RegisterScreen() {
   const { signUp, setActive, isLoaded } = useSignUp();
   const { startOAuthFlow } = useOAuth({ strategy: 'oauth_google' });
