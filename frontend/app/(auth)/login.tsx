@@ -3,11 +3,13 @@ import { View, StyleSheet, Alert } from 'react-native';
 import { TextInput, Button, Text, Card, Title } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useSignIn } from '@clerk/clerk-expo';
+import { useSignIn, useOAuth } from '@clerk/clerk-expo';
+import * as Linking from 'expo-linking';
 import { theme } from '../../theme/theme';
 
 export default function LoginScreen() {
   const { signIn, setActive, isLoaded } = useSignIn();
+  const { startOAuthFlow } = useOAuth({ strategy: 'oauth_google' });
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -34,6 +36,22 @@ export default function LoginScreen() {
     }
   };
 
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    try {
+      const redirectUrl = Linking.createURL('/');
+      const { createdSessionId, setActive: setActiveFromOAuth } = await startOAuthFlow({ redirectUrl });
+      if (createdSessionId) {
+        await setActiveFromOAuth({ session: createdSessionId });
+        router.replace('/(tabs)');
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err.errors?.[0]?.message || 'Google sign-in failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
@@ -41,6 +59,15 @@ export default function LoginScreen() {
           <Card.Content>
             <Title style={styles.title}>Welcome Back</Title>
             <Text style={styles.subtitle}>Sign in to continue</Text>
+
+            <Button
+              mode="contained"
+              onPress={handleGoogleLogin}
+              loading={loading}
+              style={styles.button}
+            >
+              Continue with Google
+            </Button>
 
             <TextInput
               label="Email"
@@ -62,13 +89,13 @@ export default function LoginScreen() {
             />
 
             <Button
-              mode="contained"
+              mode="outlined"
               onPress={handleLogin}
               loading={loading}
               disabled={!email || !password || loading}
               style={styles.button}
             >
-              Sign In
+              Sign In with Email
             </Button>
 
             <Button
