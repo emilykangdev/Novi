@@ -5,6 +5,8 @@ import { eq, desc, and } from 'drizzle-orm';
 import { ChatOpenAI } from '@langchain/openai';
 import { PromptTemplate } from '@langchain/core/prompts';
 import Parser from 'rss-parser';
+import { getToolsForAgent, isComposioEnabled } from '../../integrations/composio';
+import { isSupabaseEnabled, upsertContentItemSB, upsertSummarySB } from '../../database/supabase';
 import type { RSSItem } from '../../shared/types';
 
 /**
@@ -139,6 +141,8 @@ async function handleMonitoring(resp: AgentResponse, ctx: AgentContext, request:
     const feedSource = source[0];
     const feedUrl = feedSource.metadata?.feedUrl || feedSource.url;
 
+    const composioTools = isComposioEnabled() ? await getToolsForAgent(feedSource.userId, 'rss-agent') : [];
+
     // Parse the RSS feed
     const feed = await parser.parseURL(feedUrl);
     let newItems = 0;
@@ -159,12 +163,13 @@ async function handleMonitoring(resp: AgentResponse, ctx: AgentContext, request:
         const content = extractContent(item);
         
         // Create new content item
+        const newId = `article_${generateId()}_${Date.now()}`;
         await db.insert(contentItems).values({
-          id: `article_${generateId()}_${Date.now()}`,
+          id: newId,
           sourceId: request.sourceId,
           type: 'article',
           title: item.title || 'Untitled',
-          url: item.link,
+          url: item.link || '',
           content: content,
           metadata: {
             author: item.creator || item['dc:creator'] || 'Unknown',
@@ -174,6 +179,23 @@ async function handleMonitoring(resp: AgentResponse, ctx: AgentContext, request:
           publishedAt: item.pubDate ? new Date(item.pubDate) : new Date(),
           createdAt: new Date()
         });
+        if (isSupabaseEnabled()) {
+          await upsertContentItemSB({
+            id: newId,
+            source_id: request.sourceId,
+            type: 'article',
+            title: item.title || 'Untitled',
+            url: item.link || '',
+            content,
+            metadata: {
+              author: item.creator || (item as any)['dc:creator'] || 'Unknown',
+              publishedAt: item.pubDate || (item as any).isoDate || new Date().toISOString(),
+              tags: item.categories || []
+            },
+            published_at: (item.pubDate ? new Date(item.pubDate) : new Date()).toISOString(),
+            created_at: new Date().toISOString()
+          });
+        }
 
         newItems++;
         console.log(`[RSS Agent] Added new article: ${item.title}`);
@@ -198,6 +220,7 @@ async function handleMonitoring(resp: AgentResponse, ctx: AgentContext, request:
         sourceId: request.sourceId,
         articlesChecked: feed.items.length,
         newItems: newItems,
+        composio: { enabled: isComposioEnabled(), toolsAvailable: composioTools.length },
         feedTitle: feed.title
       },
       timestamp: new Date().toISOString()
@@ -273,6 +296,21 @@ async function handleSummarization(resp: AgentResponse, ctx: AgentContext, reque
       confidence: summaryData.confidence,
       createdAt: new Date()
     });
+
+    if (isSupabaseEnabled()) {
+      await upsertSummarySB({
+        id: summaryId,
+        content_item_id: request.contentItemId,
+        user_id: request.userId,
+        summary: summaryData.summary,
+        key_points: summaryData.keyPoints ?? null,
+        sentiment: summaryData.sentiment ?? null,
+        topics: summaryData.topics ?? null,
+        ai_model: 'gpt-4o-mini',
+        confidence: summaryData.confidence ?? null,
+        created_at: new Date().toISOString()
+      });
+    }
 
     return resp.json({
       success: true,

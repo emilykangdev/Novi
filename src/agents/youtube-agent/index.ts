@@ -5,6 +5,8 @@ import { eq, desc, and } from 'drizzle-orm';
 import { ChatOpenAI } from '@langchain/openai';
 import { PromptTemplate } from '@langchain/core/prompts';
 import type { YouTubeVideo, SummarizationRequest } from '../../shared/types';
+import { getToolsForAgent, isComposioEnabled } from '../../integrations/composio';
+import { isSupabaseEnabled, upsertContentItemSB, upsertSummarySB } from '../../database/supabase';
 
 /**
  * YouTube Summarization Agent
@@ -131,6 +133,8 @@ async function handleMonitoring(resp: AgentResponse, ctx: AgentContext, request:
     const channelSource = source[0];
     const channelId = channelSource.metadata?.channelId || extractChannelIdFromUrl(channelSource.url);
 
+    const composioTools = isComposioEnabled() ? await getToolsForAgent(channelSource.userId, 'youtube-agent') : [];
+
     if (!channelId) {
       return resp.json({
         success: false,
@@ -156,8 +160,9 @@ async function handleMonitoring(resp: AgentResponse, ctx: AgentContext, request:
 
       if (existing.length === 0) {
         // Create new content item
+        const newId = `video_${video.id}_${Date.now()}`;
         await db.insert(contentItems).values({
-          id: `video_${video.id}_${Date.now()}`,
+          id: newId,
           sourceId: request.sourceId,
           type: 'video',
           title: video.title,
@@ -173,6 +178,25 @@ async function handleMonitoring(resp: AgentResponse, ctx: AgentContext, request:
           publishedAt: new Date(video.publishedAt),
           createdAt: new Date()
         });
+        if (isSupabaseEnabled()) {
+          await upsertContentItemSB({
+            id: newId,
+            source_id: request.sourceId,
+            type: 'video',
+            title: video.title,
+            url: `https://www.youtube.com/watch?v=${video.id}`,
+            content: video.transcript || '',
+            metadata: {
+              author: video.channelTitle,
+              publishedAt: video.publishedAt,
+              duration: parseDuration(video.duration),
+              thumbnailUrl: video.thumbnails.high.url,
+              tags: []
+            },
+            published_at: new Date(video.publishedAt).toISOString(),
+            created_at: new Date().toISOString()
+          });
+        }
 
         newItems++;
         console.log(`[YouTube Agent] Added new video: ${video.title}`);
@@ -196,7 +220,8 @@ async function handleMonitoring(resp: AgentResponse, ctx: AgentContext, request:
       data: {
         sourceId: request.sourceId,
         videosChecked: videos.length,
-        newItems: newItems
+        newItems: newItems,
+        composio: { enabled: isComposioEnabled(), toolsAvailable: composioTools.length }
       },
       timestamp: new Date().toISOString()
     });
@@ -243,7 +268,7 @@ async function handleSummarization(resp: AgentResponse, ctx: AgentContext, reque
     if (!transcript && item.url) {
       const videoId = extractVideoIdFromUrl(item.url);
       if (videoId) {
-        transcript = await getVideoTranscript(videoId);
+        transcript = await getVideoTranscript(videoId, request.userId);
       }
     }
 
@@ -280,6 +305,21 @@ async function handleSummarization(resp: AgentResponse, ctx: AgentContext, reque
       confidence: summaryData.confidence,
       createdAt: new Date()
     });
+
+    if (isSupabaseEnabled()) {
+      await upsertSummarySB({
+        id: summaryId,
+        content_item_id: request.contentItemId,
+        user_id: request.userId,
+        summary: summaryData.summary,
+        key_points: summaryData.keyPoints ?? null,
+        sentiment: summaryData.sentiment ?? null,
+        topics: summaryData.topics ?? null,
+        ai_model: 'gpt-4o-mini',
+        confidence: summaryData.confidence ?? null,
+        created_at: new Date().toISOString()
+      });
+    }
 
     // TODO: Store in external storage (Notion/Google Docs)
     // This will be handled by the storage integration
@@ -364,8 +404,24 @@ async function fetchRecentVideos(channelId: string): Promise<YouTubeVideo[]> {
   return [];
 }
 
-async function getVideoTranscript(videoId: string): Promise<string> {
-  // TODO: Implement transcript extraction using youtube-transcript or similar
+async function getVideoTranscript(videoId: string, userId?: string): Promise<string> {
+  try {
+    if (isComposioEnabled() && userId) {
+      const tools: any[] = await getToolsForAgent(userId, 'youtube-agent');
+      const transcriptTool = tools.find(t =>
+        typeof t?.name === 'string' && t.name.toLowerCase().includes('transcript')
+      );
+      if (transcriptTool && typeof (transcriptTool as any).execute === 'function') {
+        const result: any = await (transcriptTool as any).execute({ video_id: videoId, videoId });
+        if (result) {
+          if (typeof result === 'string') return result as string;
+          if (result.transcript) return result.transcript as string;
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[YouTube Agent] Composio transcript fetch failed:', err);
+  }
   console.log(`[YouTube Agent] Getting transcript for video: ${videoId}`);
   return '';
 }

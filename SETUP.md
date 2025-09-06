@@ -24,7 +24,7 @@ cd frontend && npm install
 
 ### 2. Environment Configuration
 
-Copy the example environment file and configure your API keys:
+Copy the example environment file and configure your API keys. For server-side Supabase inserts, prefer SUPABASE_SERVICE_ROLE_KEY: 
 
 ```bash
 cp .env.example .env
@@ -118,6 +118,11 @@ npm start
 3. Get the API key and create a database
 4. Share the database with your integration
 
+### Composio (Optional, recommended)
+1. Create an account at https://docs.composio.dev and generate a COMPOSIO_API_KEY
+2. Add COMPOSIO_API_KEY to your `.env`
+3. Connect user accounts (e.g., Gmail, Notion, Google Docs) via Composio's OAuth during runtime; tools are fetched per user by our agents
+
 ### ElevenLabs (Optional)
 1. Sign up at [elevenlabs.io](https://elevenlabs.io)
 2. Get your API key from the profile section
@@ -187,8 +192,9 @@ npm run db:reset
 - **Sources Screen**: Manage content sources
 - **Profile Screen**: User settings and preferences
 
-### Database (TiDB)
-- Users and authentication
+### Database
+- Supabase (canonical store for summaries/storage locations)
+- TiDB (legacy/local dev for wider schema). You can keep TiDB for users/sources if desired.
 - Content sources and items
 - AI-generated summaries
 - Conversation history
