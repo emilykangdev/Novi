@@ -5,16 +5,18 @@ import { QueryClient, QueryClientProvider } from 'react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ClerkProvider } from '@clerk/clerk-expo';
 import { tokenCache } from '@clerk/clerk-expo/token-cache'
+import * as WebBrowser from 'expo-web-browser';
 
 import { clerkConfig } from '../config/clerk';
 import { theme } from '../theme/theme';
 
-// Create a client for React Query
+WebBrowser.maybeCompleteAuthSession();
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 2,
-      staleTime: 5 * 60 * 1000, // 5 minutes
+      staleTime: 5 * 60 * 1000,
     },
   },
 });
