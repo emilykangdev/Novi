@@ -23,11 +23,12 @@ import type { RSSItem } from '../../shared/types';
  */
 
 interface RSSAgentRequest {
-  action: 'ping' | 'monitor' | 'summarize' | 'parse_feed';
+  action: 'ping' | 'monitor' | 'summarize' | 'parse_feed' | 'add_source' | 'list_sources' | 'remove_source' | 'validate_feed';
   sourceId?: string;
   contentItemId?: string;
   userId?: string;
   feedUrl?: string;
+  name?: string;
   force?: boolean;
 }
 
@@ -83,16 +84,19 @@ export default async function Agent(
     switch (request.action) {
       case 'ping':
         return resp.json({ success: true, agent: 'rss-agent', timestamp: new Date().toISOString() });
-      
       case 'monitor':
         return await handleMonitoring(resp, ctx, request);
-      
       case 'summarize':
         return await handleSummarization(resp, ctx, request);
-      
       case 'parse_feed':
+      case 'validate_feed':
         return await handleFeedParsing(resp, ctx, request);
-      
+      case 'add_source':
+        return await handleAddSource(resp, ctx, request);
+      case 'list_sources':
+        return await handleListSources(resp, ctx, request);
+      case 'remove_source':
+        return await handleRemoveSource(resp, ctx, request);
       default:
         return resp.json({
           success: false,
@@ -371,6 +375,70 @@ async function handleFeedParsing(resp: AgentResponse, ctx: AgentContext, request
       error: error instanceof Error ? error.message : 'Feed parsing failed',
       timestamp: new Date().toISOString()
     });
+  }
+}
+
+async function handleAddSource(resp: AgentResponse, ctx: AgentContext, request: RSSAgentRequest) {
+  try {
+    if (!request.userId || !request.feedUrl) {
+      return resp.json({ success: false, error: 'userId and feedUrl are required', timestamp: new Date().toISOString() });
+    }
+
+    let name = request.name || '';
+    try {
+      const preview = await parser.parseURL(request.feedUrl);
+      if (preview?.title && !name) name = preview.title;
+    } catch {}
+
+    const sourceId = `source_rss_${generateId()}_${Date.now()}`;
+    await db.insert(contentSources).values({
+      id: sourceId,
+      userId: request.userId,
+      type: 'rss',
+      name: name || request.feedUrl,
+      url: request.feedUrl,
+      metadata: { feedUrl: request.feedUrl, isActive: true, lastChecked: null as any },
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+
+    return resp.json({ success: true, data: { sourceId }, timestamp: new Date().toISOString() });
+  } catch (error) {
+    console.error('[RSS Agent] Add source error:', error);
+    return resp.json({ success: false, error: error instanceof Error ? error.message : 'Add source failed', timestamp: new Date().toISOString() });
+  }
+}
+
+async function handleListSources(resp: AgentResponse, ctx: AgentContext, request: RSSAgentRequest) {
+  try {
+    if (!request.userId) {
+      return resp.json({ success: false, error: 'userId is required', timestamp: new Date().toISOString() });
+    }
+
+    const sources = await db
+      .select()
+      .from(contentSources)
+      .where(and(eq(contentSources.userId, request.userId), eq(contentSources.type, 'rss')));
+
+    return resp.json({ success: true, data: { sources }, timestamp: new Date().toISOString() });
+  } catch (error) {
+    console.error('[RSS Agent] List sources error:', error);
+    return resp.json({ success: false, error: error instanceof Error ? error.message : 'List sources failed', timestamp: new Date().toISOString() });
+  }
+}
+
+async function handleRemoveSource(resp: AgentResponse, ctx: AgentContext, request: RSSAgentRequest) {
+  try {
+    if (!request.sourceId) {
+      return resp.json({ success: false, error: 'sourceId is required', timestamp: new Date().toISOString() });
+    }
+
+    await db.delete(contentSources).where(eq(contentSources.id, request.sourceId));
+    return resp.json({ success: true, data: { removed: true }, timestamp: new Date().toISOString() });
+  } catch (error) {
+    console.error('[RSS Agent] Remove source error:', error);
+    return resp.json({ success: false, error: error instanceof Error ? error.message : 'Remove source failed', timestamp: new Date().toISOString() });
   }
 }
 

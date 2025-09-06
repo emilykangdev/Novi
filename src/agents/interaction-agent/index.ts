@@ -22,12 +22,13 @@ import { getToolsForAgent, isComposioEnabled } from '../../integrations/composio
  */
 
 interface InteractionAgentRequest {
-  action: 'ping' | 'ask' | 'search' | 'get_recent' | 'conversation_history';
+  action: 'ping' | 'ask' | 'search' | 'get_recent' | 'conversation_history' | 'update_preferences';
   userId?: string;
   query?: string;
   responseType?: 'text' | 'audio';
   context?: ConversationContext;
   limit?: number;
+  preferences?: any;
 }
 
 // Initialize AI model for conversation
@@ -67,19 +68,16 @@ export default async function Agent(
     switch (request.action) {
       case 'ping':
         return resp.json({ success: true, agent: 'interaction-agent', timestamp: new Date().toISOString() });
-      
       case 'ask':
         return await handleUserQuestion(resp, ctx, request);
-      
       case 'search':
         return await handleSearch(resp, ctx, request);
-      
       case 'get_recent':
         return await handleGetRecent(resp, ctx, request);
-      
       case 'conversation_history':
         return await handleConversationHistory(resp, ctx, request);
-      
+      case 'update_preferences':
+        return await handleUpdatePreferences(resp, ctx, request);
       default:
         return resp.json({
           success: false,
@@ -334,6 +332,46 @@ async function handleConversationHistory(resp: AgentResponse, ctx: AgentContext,
       error: error instanceof Error ? error.message : 'Conversation history failed',
       timestamp: new Date().toISOString()
     });
+  }
+}
+
+async function handleUpdatePreferences(resp: AgentResponse, ctx: AgentContext, request: InteractionAgentRequest) {
+  try {
+    if (!request.userId || !request.preferences) {
+      return resp.json({ success: false, error: 'userId and preferences are required', timestamp: new Date().toISOString() });
+    }
+
+    await db
+      .update(users)
+      .set({ preferences: request.preferences as any, updatedAt: new Date() })
+      .where(eq(users.id, request.userId));
+
+    const updated = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, request.userId))
+      .limit(1);
+
+    const user = updated[0];
+
+    return resp.json({
+      success: true,
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          avatar: user.avatar,
+          preferences: user.preferences as any,
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt
+        }
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('[Interaction Agent] Update preferences error:', error);
+    return resp.json({ success: false, error: error instanceof Error ? error.message : 'Update preferences failed', timestamp: new Date().toISOString() });
   }
 }
 

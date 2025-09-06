@@ -22,11 +22,14 @@ import { isSupabaseEnabled, upsertContentItemSB, upsertSummarySB } from '../../d
  */
 
 interface YouTubeAgentRequest {
-  action: 'ping' | 'monitor' | 'summarize' | 'get_transcript';
+  action: 'ping' | 'monitor' | 'summarize' | 'get_transcript' | 'add_source' | 'list_sources' | 'remove_source' | 'validate_channel';
   sourceId?: string;
   contentItemId?: string;
   userId?: string;
   videoId?: string;
+  channelUrl?: string;
+  playlistUrl?: string;
+  name?: string;
   force?: boolean;
 }
 
@@ -75,16 +78,20 @@ export default async function Agent(
     switch (request.action) {
       case 'ping':
         return resp.json({ success: true, agent: 'youtube-agent', timestamp: new Date().toISOString() });
-      
       case 'monitor':
         return await handleMonitoring(resp, ctx, request);
-      
       case 'summarize':
         return await handleSummarization(resp, ctx, request);
-      
       case 'get_transcript':
         return await handleTranscriptExtraction(resp, ctx, request);
-      
+      case 'add_source':
+        return await handleAddSource(resp, ctx, request);
+      case 'list_sources':
+        return await handleListSources(resp, ctx, request);
+      case 'remove_source':
+        return await handleRemoveSource(resp, ctx, request);
+      case 'validate_channel':
+        return await handleValidateChannel(resp, ctx, request);
       default:
         return resp.json({
           success: false,
@@ -357,7 +364,7 @@ async function handleTranscriptExtraction(resp: AgentResponse, ctx: AgentContext
       });
     }
 
-    const transcript = await getVideoTranscript(request.videoId);
+    const transcript = await getVideoTranscript(request.videoId, request.userId);
     
     return resp.json({
       success: true,
@@ -372,6 +379,81 @@ async function handleTranscriptExtraction(resp: AgentResponse, ctx: AgentContext
       error: error instanceof Error ? error.message : 'Transcript extraction failed',
       timestamp: new Date().toISOString()
     });
+  }
+}
+
+async function handleAddSource(resp: AgentResponse, ctx: AgentContext, request: YouTubeAgentRequest) {
+  try {
+    if (!request.userId || (!request.channelUrl && !request.playlistUrl)) {
+      return resp.json({ success: false, error: 'userId and channelUrl or playlistUrl are required', timestamp: new Date().toISOString() });
+    }
+
+    const url = request.channelUrl || request.playlistUrl!;
+    const channelId = extractChannelIdFromUrl(url);
+    const name = request.name || url;
+
+    const sourceId = `source_yt_${generateId()}_${Date.now()}`;
+    await db.insert(contentSources).values({
+      id: sourceId,
+      userId: request.userId,
+      type: 'youtube',
+      name,
+      url,
+      metadata: { channelId: channelId || undefined, isActive: true, lastChecked: null as any },
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+
+    return resp.json({ success: true, data: { sourceId, channelId }, timestamp: new Date().toISOString() });
+  } catch (error) {
+    console.error('[YouTube Agent] Add source error:', error);
+    return resp.json({ success: false, error: error instanceof Error ? error.message : 'Add source failed', timestamp: new Date().toISOString() });
+  }
+}
+
+async function handleListSources(resp: AgentResponse, ctx: AgentContext, request: YouTubeAgentRequest) {
+  try {
+    if (!request.userId) {
+      return resp.json({ success: false, error: 'userId is required', timestamp: new Date().toISOString() });
+    }
+
+    const sources = await db
+      .select()
+      .from(contentSources)
+      .where(and(eq(contentSources.userId, request.userId), eq(contentSources.type, 'youtube')));
+
+    return resp.json({ success: true, data: { sources }, timestamp: new Date().toISOString() });
+  } catch (error) {
+    console.error('[YouTube Agent] List sources error:', error);
+    return resp.json({ success: false, error: error instanceof Error ? error.message : 'List sources failed', timestamp: new Date().toISOString() });
+  }
+}
+
+async function handleRemoveSource(resp: AgentResponse, ctx: AgentContext, request: YouTubeAgentRequest) {
+  try {
+    if (!request.sourceId) {
+      return resp.json({ success: false, error: 'sourceId is required', timestamp: new Date().toISOString() });
+    }
+
+    await db.delete(contentSources).where(eq(contentSources.id, request.sourceId));
+    return resp.json({ success: true, data: { removed: true }, timestamp: new Date().toISOString() });
+  } catch (error) {
+    console.error('[YouTube Agent] Remove source error:', error);
+    return resp.json({ success: false, error: error instanceof Error ? error.message : 'Remove source failed', timestamp: new Date().toISOString() });
+  }
+}
+
+async function handleValidateChannel(resp: AgentResponse, ctx: AgentContext, request: YouTubeAgentRequest) {
+  try {
+    if (!request.channelUrl) {
+      return resp.json({ success: false, error: 'channelUrl is required', timestamp: new Date().toISOString() });
+    }
+    const channelId = extractChannelIdFromUrl(request.channelUrl);
+    return resp.json({ success: true, data: { valid: !!channelId, channelId }, timestamp: new Date().toISOString() });
+  } catch (error) {
+    console.error('[YouTube Agent] Validate channel error:', error);
+    return resp.json({ success: false, error: error instanceof Error ? error.message : 'Validate channel failed', timestamp: new Date().toISOString() });
   }
 }
 

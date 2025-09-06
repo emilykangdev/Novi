@@ -21,11 +21,13 @@ import { isSupabaseEnabled, upsertContentItemSB, upsertSummarySB } from '../../d
  */
 
 interface NewsletterAgentRequest {
-  action: 'ping' | 'monitor' | 'summarize' | 'process_email';
+  action: 'ping' | 'monitor' | 'summarize' | 'process_email' | 'add_source' | 'list_sources' | 'remove_source';
   sourceId?: string;
   contentItemId?: string;
   userId?: string;
   emailContent?: string;
+  name?: string;
+  senderEmail?: string;
   force?: boolean;
 }
 
@@ -76,16 +78,18 @@ export default async function Agent(
     switch (request.action) {
       case 'ping':
         return resp.json({ success: true, agent: 'newsletter-agent', timestamp: new Date().toISOString() });
-      
       case 'monitor':
         return await handleMonitoring(resp, ctx, request);
-      
       case 'summarize':
         return await handleSummarization(resp, ctx, request);
-      
       case 'process_email':
         return await handleEmailProcessing(resp, ctx, request);
-      
+      case 'add_source':
+        return await handleAddSource(resp, ctx, request);
+      case 'list_sources':
+        return await handleListSources(resp, ctx, request);
+      case 'remove_source':
+        return await handleRemoveSource(resp, ctx, request);
       default:
         return resp.json({
           success: false,
@@ -409,6 +413,61 @@ async function handleEmailProcessing(resp: AgentResponse, ctx: AgentContext, req
       error: error instanceof Error ? error.message : 'Email processing failed',
       timestamp: new Date().toISOString()
     });
+  }
+}
+
+async function handleAddSource(resp: AgentResponse, ctx: AgentContext, request: NewsletterAgentRequest) {
+  try {
+    if (!request.userId || (!request.name && !request.senderEmail)) {
+      return resp.json({ success: false, error: 'userId and name or senderEmail are required', timestamp: new Date().toISOString() });
+    }
+    const name = request.name || request.senderEmail!;
+    const url = request.senderEmail ? `mailto:${request.senderEmail}` : name;
+    const sourceId = `source_news_${generateId()}_${Date.now()}`;
+    await db.insert(contentSources).values({
+      id: sourceId,
+      userId: request.userId,
+      type: 'newsletter',
+      name,
+      url,
+      metadata: { isActive: true, lastChecked: null as any },
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+    return resp.json({ success: true, data: { sourceId }, timestamp: new Date().toISOString() });
+  } catch (error) {
+    console.error('[Newsletter Agent] Add source error:', error);
+    return resp.json({ success: false, error: error instanceof Error ? error.message : 'Add source failed', timestamp: new Date().toISOString() });
+  }
+}
+
+async function handleListSources(resp: AgentResponse, ctx: AgentContext, request: NewsletterAgentRequest) {
+  try {
+    if (!request.userId) {
+      return resp.json({ success: false, error: 'userId is required', timestamp: new Date().toISOString() });
+    }
+    const sources = await db
+      .select()
+      .from(contentSources)
+      .where(and(eq(contentSources.userId, request.userId), eq(contentSources.type, 'newsletter')));
+    return resp.json({ success: true, data: { sources }, timestamp: new Date().toISOString() });
+  } catch (error) {
+    console.error('[Newsletter Agent] List sources error:', error);
+    return resp.json({ success: false, error: error instanceof Error ? error.message : 'List sources failed', timestamp: new Date().toISOString() });
+  }
+}
+
+async function handleRemoveSource(resp: AgentResponse, ctx: AgentContext, request: NewsletterAgentRequest) {
+  try {
+    if (!request.sourceId) {
+      return resp.json({ success: false, error: 'sourceId is required', timestamp: new Date().toISOString() });
+    }
+    await db.delete(contentSources).where(eq(contentSources.id, request.sourceId));
+    return resp.json({ success: true, data: { removed: true }, timestamp: new Date().toISOString() });
+  } catch (error) {
+    console.error('[Newsletter Agent] Remove source error:', error);
+    return resp.json({ success: false, error: error instanceof Error ? error.message : 'Remove source failed', timestamp: new Date().toISOString() });
   }
 }
 
