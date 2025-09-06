@@ -1,0 +1,54 @@
+{
+  "name": "novi",
+  "version": "1.0.0",
+  "description": "Your Friendly Info Companion - AI agent for content summarization",
+  "main": "index.js",
+  "scripts": {
+    "dev": "agentuity dev",
+    "deploy": "agentuity deploy",
+    "build": "tsc",
+    "test": "jest",
+    "lint": "eslint src --ext .ts,.tsx",
+    "type-check": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
+  },
+  "keywords": ["ai", "agent", "summarization", "youtube", "rss", "newsletter"],
+  "author": "Novi Team",
+  "license": "MIT",
+  "dependencies": {
+    "@agentuity/sdk": "^0.0.144",
+    "@langchain/core": "^0.3.0",
+    "@langchain/openai": "^0.3.0",
+    "@langchain/anthropic": "^0.3.0",
+    "composio-core": "^0.5.0",
+    "mysql2": "^3.11.0",
+    "drizzle-orm": "^0.36.0",
+    "@notionhq/client": "^2.2.15",
+    "googleapis": "^144.0.0",
+    "rss-parser": "^3.13.0",
+    "youtube-transcript": "^1.2.1",
+    "elevenlabs": "^0.15.0",
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "zod": "^3.23.8",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/bcrypt": "^5.0.2",
+    "@types/jsonwebtoken": "^9.0.6",
+    "typescript": "^5.6.0",
+    "drizzle-kit": "^0.28.0",
+    "@types/jest": "^29.5.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.0",
+    "eslint": "^9.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
