@@ -1,331 +1,112 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  ScrollView,
-  StyleSheet,
-  RefreshControl,
-} from 'react-native';
-import {
-  Card,
-  Title,
-  Paragraph,
-  Button,
-  Chip,
-  useTheme,
-  ActivityIndicator,
-  Text,
-} from 'react-native-paper';
-import { useQuery } from 'react-query';
-import { router } from 'expo-router';
+import React from 'react';
+import { View, ScrollView } from 'react-native';
+import { Text, Card, Button, useTheme, Avatar, Chip } from 'react-native-paper';
 
-import { summaryService } from '../../services/summaryService';
-import { useAuth } from '../../contexts/AuthContext';
-import type { Summary } from '../../types';
-
-import { SignOutButton } from '../components/SignOutButton';
-import { SignedIn, SignedOut, useUser } from '@clerk/clerk-expo'
-
-export default function HomeScreen() {
+export default function SummariesScreen() {
   const theme = useTheme();
-  const { user } = useAuth();
-  const [refreshing, setRefreshing] = useState(false);
 
-  const {
-    data: summaries,
-    isLoading,
-    refetch,
-  } = useQuery(
-    'recent-summaries',
-    () => summaryService.getRecentSummaries(10),
+  // Example summaries data
+  const summaries = [
     {
-      enabled: !!user,
-      staleTime: 2 * 60 * 1000, // 2 minutes
+      id: '1',
+      title: 'AI Breakthrough in Language Models',
+      summary: 'Researchers at Stanford have developed a new approach to training language models that reduces computational requirements by 40% while maintaining performance. The technique, called "Sparse Attention Mechanisms," could make AI more accessible to smaller organizations.',
+      source: 'TechCrunch RSS',
+      url: 'https://techcrunch.com/feed',
+      timestamp: '2 hours ago',
+      readTime: '3 min read',
+      hasAudio: true,
+    },
+    {
+      id: '2',
+      title: 'Climate Tech Funding Reaches Record High',
+      summary: 'Investment in climate technology startups hit $8.1 billion in Q3 2024, with carbon capture and renewable energy storage leading the way. Major VCs are increasingly prioritizing sustainability-focused companies.',
+      source: 'Hacker News RSS',
+      url: 'https://hnrss.org/frontpage',
+      timestamp: '5 hours ago',
+      readTime: '2 min read',
+      hasAudio: true,
+    },
+    {
+      id: '3',
+      title: 'React Native 0.75 Released with New Architecture',
+      summary: 'The latest React Native update brings significant performance improvements with the new architecture now stable. Developers can expect 30% faster app startup times and improved memory management.',
+      source: 'React Blog RSS',
+      url: 'https://reactjs.org/feed.xml',
+      timestamp: '1 day ago',
+      readTime: '4 min read',
+      hasAudio: false,
+    },
+    {
+      id: '4',
+      title: 'Startup Raises $50M for AI-Powered Code Review',
+      summary: 'CodeAI, a startup developing AI tools for automated code review, has raised $50M in Series B funding. The platform claims to catch 85% more bugs than traditional static analysis tools.',
+      source: 'Product Hunt RSS',
+      url: 'https://www.producthunt.com/feed',
+      timestamp: '2 days ago',
+      readTime: '3 min read',
+      hasAudio: true,
     }
-  );
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await refetch();
-    setRefreshing(false);
-  };
-
-  const getContentTypeIcon = (type: string) => {
-    switch (type) {
-      case 'video':
-        return '🎥';
-      case 'article':
-        return '📰';
-      case 'newsletter':
-        return '📧';
-      default:
-        return '📄';
-    }
-  };
-
-  const getSentimentColor = (sentiment?: string) => {
-    switch (sentiment) {
-      case 'positive':
-        return theme.colors.tertiary;
-      case 'negative':
-        return theme.colors.error;
-      case 'neutral':
-      default:
-        return theme.colors.outline;
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <View style={[styles.container, styles.centered]}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-        <Text style={[styles.loadingText, { color: theme.colors.onBackground }]}>
-          Loading your latest summaries...
-        </Text>
-      </View>
-    );
-  }
+  ];
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-    >
-      {/* Welcome Section */}
-      <Card style={[styles.welcomeCard, { backgroundColor: theme.colors.primary }]}>
-        <Card.Content>
-          <Title style={styles.welcomeTitle}>
-            Welcome back, {user?.name || 'there'}! 👋
-          </Title>
-          <Paragraph style={styles.welcomeText}>
-            Here's what Novi has been summarizing for you today.
-          </Paragraph>
-        </Card.Content>
-      </Card>
-
-      {/* Quick Stats */}
-      <View style={styles.statsContainer}>
-        <Card style={[styles.statCard, { backgroundColor: theme.colors.surface }]}>
-          <Card.Content style={styles.statContent}>
-            <Text style={[styles.statNumber, { color: theme.colors.primary }]}>
-              {summaries?.data?.length || 0}
-            </Text>
-            <Text style={[styles.statLabel, { color: theme.colors.onSurface }]}>
-              Recent Summaries
-            </Text>
-          </Card.Content>
-        </Card>
+    <ScrollView style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      <View style={{ padding: 16 }}>
+        <Text variant="headlineMedium" style={{ marginBottom: 16, color: theme.colors.onBackground }}>
+          Latest Summaries
+        </Text>
         
-        <Card style={[styles.statCard, { backgroundColor: theme.colors.surface }]}>
-          <Card.Content style={styles.statContent}>
-            <Text style={[styles.statNumber, { color: theme.colors.secondary }]}>
-              {summaries?.data?.filter(s => s.sentiment === 'positive').length || 0}
-            </Text>
-            <Text style={[styles.statLabel, { color: theme.colors.onSurface }]}>
-              Positive Content
-            </Text>
-          </Card.Content>
-        </Card>
-      </View>
-
-      {/* Recent Summaries */}
-      <View style={styles.section}>
-        <Title style={[styles.sectionTitle, { color: theme.colors.onBackground }]}>
-          📚 Recent Summaries
-        </Title>
-        
-        {summaries?.data && summaries.data.length > 0 ? (
-          summaries.data.map((summary: Summary) => (
-            <Card key={summary.id} style={[styles.summaryCard, { backgroundColor: theme.colors.surface }]}>
-              <Card.Content>
-                <View style={styles.summaryHeader}>
-                  <Text style={styles.contentTypeIcon}>
-                    {getContentTypeIcon(summary.contentType)}
+        {summaries.map((item) => (
+          <Card key={item.id} style={{ marginBottom: 16 }}>
+            <Card.Content>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                <Avatar.Icon size={32} icon="rss" style={{ marginRight: 12 }} />
+                <View style={{ flex: 1 }}>
+                  <Text variant="bodySmall" style={{ color: theme.colors.primary, fontWeight: '600' }}>
+                    {item.source}
                   </Text>
-                  <View style={styles.summaryMeta}>
-                    <Text style={[styles.summaryTitle, { color: theme.colors.onSurface }]} numberOfLines={2}>
-                      {summary.title}
-                    </Text>
-                    <Text style={[styles.summaryDate, { color: theme.colors.onSurfaceVariant }]}>
-                      {new Date(summary.createdAt).toLocaleDateString()}
-                    </Text>
-                  </View>
+                  <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                    {item.timestamp} • {item.readTime}
+                  </Text>
                 </View>
-                
-                <Paragraph style={[styles.summaryText, { color: theme.colors.onSurface }]} numberOfLines={3}>
-                  {summary.summary}
-                </Paragraph>
-                
-                <View style={styles.summaryFooter}>
-                  <View style={styles.chips}>
-                    {summary.sentiment && (
-                      <Chip
-                        mode="outlined"
-                        style={[styles.chip, { borderColor: getSentimentColor(summary.sentiment) }]}
-                        textStyle={{ color: getSentimentColor(summary.sentiment), fontSize: 12 }}
-                      >
-                        {summary.sentiment}
-                      </Chip>
-                    )}
-                    {summary.confidence && (
-                      <Chip
-                        mode="outlined"
-                        style={[styles.chip, { borderColor: theme.colors.primary }]}
-                        textStyle={{ color: theme.colors.primary, fontSize: 12 }}
-                      >
-                        {summary.confidence}% confident
-                      </Chip>
-                    )}
-                  </View>
-                </View>
-              </Card.Content>
-            </Card>
-          ))
-        ) : (
-          <Card style={[styles.emptyCard, { backgroundColor: theme.colors.surface }]}>
-            <Card.Content style={styles.emptyContent}>
-              <Text style={[styles.emptyIcon, { color: theme.colors.onSurfaceVariant }]}>
-                📭
+              </View>
+              
+              <Text variant="titleMedium" style={{ marginBottom: 8, fontWeight: '600' }}>
+                {item.title}
               </Text>
-              <Title style={[styles.emptyTitle, { color: theme.colors.onSurface }]}>
-                No summaries yet
-              </Title>
-              <Paragraph style={[styles.emptyText, { color: theme.colors.onSurfaceVariant }]}>
-                Add some content sources to get started with Novi!
-              </Paragraph>
-              <Button
-                mode="contained"
-                style={styles.emptyButton}
-                onPress={() => router.push('/(tabs)/sources')}
-              >
-                Add Sources
-              </Button>
+              
+              <Text variant="bodyMedium" style={{ marginBottom: 12, lineHeight: 20 }}>
+                {item.summary}
+              </Text>
+              
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {item.hasAudio && (
+                    <Chip icon="play" mode="outlined" compact>
+                      Audio
+                    </Chip>
+                  )}
+                  <Chip icon="bookmark-outline" mode="outlined" compact>
+                    Save
+                  </Chip>
+                </View>
+                <Button mode="text" compact>
+                  Share
+                </Button>
+              </View>
             </Card.Content>
           </Card>
-        )}
+        ))}
+        
+        <Text variant="bodyMedium" style={{ 
+          textAlign: 'center', 
+          color: theme.colors.onSurfaceVariant,
+          marginTop: 16,
+          fontStyle: 'italic'
+        }}>
+          🎯 Example summaries - Connect your RSS feeds to see real content!
+        </Text>
       </View>
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 16,
-  },
-  centered: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-  },
-  welcomeCard: {
-    marginBottom: 16,
-  },
-  welcomeTitle: {
-    color: 'white',
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  welcomeText: {
-    color: 'white',
-    opacity: 0.9,
-    fontSize: 16,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-  },
-  statCard: {
-    flex: 1,
-    marginHorizontal: 4,
-  },
-  statContent: {
-    alignItems: 'center',
-  },
-  statNumber: {
-    fontSize: 32,
-    fontWeight: 'bold',
-  },
-  statLabel: {
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 16,
-  },
-  summaryCard: {
-    marginBottom: 12,
-  },
-  summaryHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  contentTypeIcon: {
-    fontSize: 24,
-    marginRight: 12,
-  },
-  summaryMeta: {
-    flex: 1,
-  },
-  summaryTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  summaryDate: {
-    fontSize: 12,
-  },
-  summaryText: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 12,
-  },
-  summaryFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  chip: {
-    marginRight: 8,
-    marginBottom: 4,
-  },
-  emptyCard: {
-    marginTop: 32,
-  },
-  emptyContent: {
-    alignItems: 'center',
-    paddingVertical: 32,
-  },
-  emptyIcon: {
-    fontSize: 48,
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  emptyButton: {
-    paddingHorizontal: 24,
-  },
-});

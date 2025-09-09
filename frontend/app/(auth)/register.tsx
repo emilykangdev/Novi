@@ -22,7 +22,6 @@ export default function RegisterScreen() {
       const result = await signUp.create({
         emailAddress: email,
         password,
-        firstName: name,
       });
 
       // If account creation is complete, sign in immediately
@@ -31,7 +30,9 @@ export default function RegisterScreen() {
         router.replace('/(tabs)');
       }
     } catch (err: any) {
-      Alert.alert('Error', err.errors?.[0]?.message || 'Registration failed');
+      console.error('Registration error:', err);
+      const errorMessage = err.errors?.[0]?.message || err.message || 'Registration failed';
+      Alert.alert('Registration Error', errorMessage);
     } finally {
       setLoading(false);
     }

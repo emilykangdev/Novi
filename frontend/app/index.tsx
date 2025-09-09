@@ -2,12 +2,9 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Button, Card, Title, Paragraph } from 'react-native-paper';
 import { SignedIn, SignedOut, useUser } from '@clerk/clerk-expo';
-import { Link } from 'expo-router';
+import { Link, Redirect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { theme } from '../theme/theme';
-
-// Import your main app content
-import HomeScreen from './(tabs)/index';
 
 export default function IndexScreen() {
   const { user } = useUser();
@@ -15,8 +12,8 @@ export default function IndexScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <SignedIn>
-        {/* User is authenticated - show main app */}
-        <HomeScreen />
+        {/* User is authenticated - redirect to tabs */}
+        <Redirect href="/(tabs)" />
       </SignedIn>
       
       <SignedOut>
