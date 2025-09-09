@@ -23,9 +23,18 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: 'Summaries',
           tabBarIcon: ({ color, size }) => (
-            <MaterialIcons name="home" size={size} color={color} />
+            <MaterialIcons name="article" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="add-feed"
+        options={{
+          title: 'Add RSS',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialIcons name="add" size={size} color={color} />
           ),
         }}
       />
@@ -35,15 +44,6 @@ export default function TabLayout() {
           title: 'Chat',
           tabBarIcon: ({ color, size }) => (
             <MaterialIcons name="chat" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="sources"
-        options={{
-          title: 'Sources',
-          tabBarIcon: ({ color, size }) => (
-            <MaterialIcons name="source" size={size} color={color} />
           ),
         }}
       />

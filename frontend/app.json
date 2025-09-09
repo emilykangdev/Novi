@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Novi",
-    "slug": "novi-app",
+    "slug": "novi",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -37,11 +37,14 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-av"
+      "expo-av",
+      "expo-web-browser",
+      "expo-font",
+      "expo-secure-store"
     ],
     "extra": {
       "eas": {
-        "projectId": "your-project-id-here"
+        "projectId": "857458bf-6dc1-4489-9f80-c7509c39ae21"
       }
     }
   }

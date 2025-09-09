@@ -2,7 +2,7 @@ import { useClerk } from '@clerk/clerk-expo'
 import * as Linking from 'expo-linking'
 import { Text, TouchableOpacity } from 'react-native'
 
-export const SignOutButton = () => {
+const SignOutButton = () => {
   // Use `useClerk()` to access the `signOut()` function
   const { signOut } = useClerk()
   const handleSignOut = async () => {
@@ -22,3 +22,5 @@ export const SignOutButton = () => {
     </TouchableOpacity>
   )
 }
+
+export default SignOutButton;
