@@ -7,6 +7,10 @@ frontend/node_modules/
 .env.local
 .env.development
 .env.production
+credentials.json
+*.jks
+credentials
+android
 
 # Build outputs
 dist/
